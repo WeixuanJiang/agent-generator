@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-agent-generator"
+version = "0.1.0"
+description = "Autonomous multi-agent system generator powered by Claude Code CLI."
+readme = "README.md"
+authors = [{ name = "Auto Agent Generator" }]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+auto-agent-generator = "auto_agent_generator.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
