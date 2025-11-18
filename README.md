@@ -15,10 +15,10 @@ Autonomous multi-agent system generator powered by Claude Code CLI. Provide busi
 
 ## Prerequisites
 
-1. **Claude Code CLI** or **Codex CLI**: Install one runtime (Claude: [https://code.claude.com](https://code.claude.com), Codex: `npm/pip` per Codex docs)
-2. **Python 3.8+**: Required for running the generator
-3. **Node.js & npm**: Required for MCP servers
-4. **Model Provider Credentials**: API keys for your chosen provider
+1. **Claude Code CLI**: Install from [https://code.claude.com](https://code.claude.com)
+2. **Python 3.9+**: Required for running the generator
+3. **Node.js & npm**: Optional, only required if using MCP servers
+4. **Model Provider Credentials**: API keys for your chosen provider (OpenAI, Anthropic, AWS, or Google)
 
 ## Installation
 
@@ -26,11 +26,11 @@ Autonomous multi-agent system generator powered by Claude Code CLI. Provide busi
 # Clone or download this repository
 cd auto_agent_generator
 
-# Install in editable mode
+# Install in editable mode (optional - for running as console command)
 pip install -e .
 
-# Verify desired CLI is installed (choose one)
-claude --version   # or: codex --version
+# Verify Claude CLI is installed
+claude --version
 ```
 
 ## Quick Start
@@ -69,7 +69,7 @@ Build a system that processes customer feedback and generates insights.
 - Web search for competitive analysis
 ```
 
-See `examples/example_context.md` for a comprehensive example.
+Check the `data/context.md` file in this repository for an example.
 
 ### 2. Create Configuration File
 
@@ -77,30 +77,33 @@ Create `data/config.json` with your settings:
 
 ```json
 {
-  "framework": "langgraph",
-  "llm_runner": "claude", // or "codex"
+  "framework": "langchain",
   "model_provider": {
-    "name": "anthropic",
-    "model": "claude-3-5-sonnet-20241022",
+    "name": "openai",
+    "model": "gpt-4-turbo-preview",
     "credentials": {
-      "api_key": "env:ANTHROPIC_API_KEY"
+      "api_key": "env:OPENAI_API_KEY"
     },
     "parameters": {
       "temperature": 0.7,
       "max_tokens": 4096
     }
   },
-  "mcp_servers": ["filesystem", "github", "postgres"]
   "generation_settings": {
     "max_iterations": 10,
     "enable_testing": true,
     "output_directory": "outputs/",
-    "verbose": true
+    "verbose": true,
+    "save_progress": true
   }
 }
 ```
 
-See `examples/` folder for more configuration examples.
+**Optional Configuration Fields:**
+- `llm_runner`: Set to `"claude"` (default) or `"codex"` to specify which CLI interface to use
+- `mcp_servers`: List of MCP server names to use (e.g., `["filesystem", "github", "postgres"]`)
+
+Check the `data/config.json` file in this repository for an example.
 
 ### 3. Set Environment Variables
 
@@ -119,9 +122,10 @@ export AWS_SECRET_ACCESS_KEY="your-secret-key"
 ### 4. Run the Generator
 
 ```bash
-python -m auto_agent_generator.cli              # defaults to Claude
-# or
-python -m auto_agent_generator.cli --llm codex
+python -m auto_agent_generator.cli
+
+# Or if you installed with pip install -e .
+auto-agent-generator
 ```
 
 The system will:
@@ -151,9 +155,7 @@ auto_agent_generator/
 │   └── mcp/manager.py            # MCP auto-setup
 ├── progress/                     # Execution progress artifacts
 ├── outputs/                      # Generated systems
-├── examples/                     # Example templates
 ├── pyproject.toml                # Packaging + console script
-├── CODE_REFERENCE.md             # Architecture docs
 └── README.md                     # This file
 ```
 
@@ -233,31 +235,40 @@ Role-based multi-agent collaboration
 }
 ```
 
-## Available MCPs
+## MCP Server Support
 
-The system automatically detects and configures these MCP servers:
+MCP (Model Context Protocol) servers can be configured to provide additional capabilities to the generated agents. The system can work with standard MCP servers when specified in your configuration.
 
+To use MCP servers, add them to your `config.json`:
+
+```json
+{
+  "mcp_servers": ["filesystem", "github", "postgres"]
+}
+```
+
+Common MCP servers include:
 - **filesystem**: File system operations
 - **github**: GitHub API integration
-- **gitlab**: GitLab API integration
 - **postgres**: PostgreSQL database
 - **sqlite**: SQLite database
-- **google-drive**: Google Drive files
-- **slack**: Slack messaging
 - **brave-search**: Web search
-- **puppeteer**: Web scraping
-- **memory**: Vector database for knowledge
+- And others available through the MCP ecosystem
+
+**Note**: MCP servers are optional. The generator will analyze your context and suggest appropriate MCPs, or you can explicitly specify them in your configuration.
 
 ## Command Line Interface
 
 ```bash
 # Run with data/context.md and data/config.json
-python -m auto_agent_generator.cli                 # default Claude runtime
-python -m auto_agent_generator.cli --llm codex     # use Codex runtime
-python -m auto_agent_generator.cli --restart       # clear progress and start fresh
+python -m auto_agent_generator.cli
 
-# Run with example configuration
-python -m auto_agent_generator.cli example
+# Clear progress and start fresh
+python -m auto_agent_generator.cli --restart
+
+# Override LLM runner from config
+python -m auto_agent_generator.cli --llm claude
+python -m auto_agent_generator.cli --llm codex
 
 # Show current status
 python -m auto_agent_generator.cli status
@@ -276,14 +287,20 @@ python -m auto_agent_generator.cli help
 ```json
 {
   "generation_settings": {
-    "max_iterations": 10,        // Maximum debug iterations
-    "enable_testing": true,      // Run tests after generation
-    "output_directory": "outputs/",  // Where to save generated code
-    "verbose": true,             // Detailed output
-    "save_progress": true        // Save execution progress
+    "max_iterations": 10,
+    "enable_testing": true,
+    "output_directory": "outputs/",
+    "verbose": true,
+    "save_progress": true
   }
 }
 ```
+
+- `max_iterations`: Maximum debug iterations (default: 10)
+- `enable_testing`: Run tests after generation (default: true)
+- `output_directory`: Where to save generated code (default: "outputs/")
+- `verbose`: Detailed output (default: true)
+- `save_progress`: Save execution progress (default: true)
 
 ### Model Parameters
 
@@ -291,13 +308,17 @@ python -m auto_agent_generator.cli help
 {
   "model_provider": {
     "parameters": {
-      "temperature": 0.7,        // Creativity level (0.0-1.0)
-      "max_tokens": 4096,        // Maximum response length
-      "top_p": 1.0              // Nucleus sampling parameter
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "top_p": 1.0
     }
   }
 }
 ```
+
+- `temperature`: Creativity level, 0.0-1.0 (default: 0.7)
+- `max_tokens`: Maximum response length (default: 4096)
+- `top_p`: Nucleus sampling parameter (default: 1.0)
 
 ## Progress Tracking
 
@@ -331,17 +352,29 @@ outputs/
 └── GENERATION_REPORT.md      # Generation report
 ```
 
-## Examples
+## Example Use Cases
 
-### Example 1: Customer Support Automation
+### Customer Support Automation
 
-See `examples/example_context.md` - A complete customer support ticket processing system with:
-- Ticket classification
-- Knowledge base search
-- Response generation
-- Quality review
+```markdown
+# Customer Support Automation
 
-### Example 2: Data Pipeline
+Build a multi-agent system that processes customer support tickets.
+
+## Workflow
+1. Classify incoming tickets by priority and category
+2. Search knowledge base for relevant solutions
+3. Generate draft responses
+4. Quality review before sending
+
+## Agents
+- Classifier: Categorizes and prioritizes tickets
+- Searcher: Finds relevant knowledge base articles
+- Responder: Drafts customer responses
+- Reviewer: Quality checks responses
+```
+
+### Data Pipeline
 
 ```markdown
 # Data Pipeline System
@@ -352,10 +385,11 @@ Build a multi-agent system that:
 3. Loads into data warehouse
 4. Generates quality reports
 
-Agents: Extractor, Transformer, Validator, Loader, Reporter
+## Agents
+Extractor, Transformer, Validator, Loader, Reporter
 ```
 
-### Example 3: Content Creation
+### Content Creation
 
 ```markdown
 # Content Creation Pipeline
@@ -367,18 +401,19 @@ Multi-agent system for:
 4. Optimize for SEO
 5. Publish to CMS
 
-Agents: Researcher, Writer, FactChecker, SEOOptimizer, Publisher
+## Agents
+Researcher, Writer, FactChecker, SEOOptimizer, Publisher
 ```
 
 ## Troubleshooting
 
-### Issue: LLM CLI not found
+### Issue: Claude Code CLI not found
 ```bash
-# Install Claude Code CLI (if using Claude runtime)
+# Install Claude Code CLI
 # Visit: https://code.claude.com
 
-# OR install Codex CLI (if using Codex runtime)
-# codex --version   # verify installation per Codex instructions
+# Verify installation
+claude --version
 ```
 
 ### Issue: MCP server not available
@@ -415,7 +450,7 @@ echo "ANTHROPIC_API_KEY=your-key" >> .env
 Add custom MCPs programmatically:
 
 ```python
-from src.mcp_manager import MCPManager
+from auto_agent_generator.mcp.manager import MCPManager
 
 mcp_manager = MCPManager()
 mcp_manager.add_custom_mcp("my-custom-mcp", {
@@ -440,45 +475,22 @@ The system will load previous progress and continue.
 ```json
 {
   "generation_settings": {
-    "max_iterations": 20  // Increase for complex systems
+    "max_iterations": 20
   }
 }
 ```
 
+Increase `max_iterations` for more complex systems that may require additional debugging cycles.
+
 ## Architecture
 
-See `CODE_REFERENCE.md` for detailed architecture documentation including:
-- Module descriptions
-- Data flow diagrams
-- Extension points
-- API documentation
+The system consists of several key components:
 
-## Contributing
+- **CLI** (`cli.py`): Entry point and command-line interface
+- **Context Parser** (`context/parser.py`): Parses business context from markdown
+- **Config Parser** (`config/parser.py`): Loads and validates configuration
+- **LLM Interface** (`llm/claude.py`, `llm/codex.py`): Wrappers for AI CLI tools
+- **MCP Manager** (`mcp/manager.py`): Manages MCP server configuration
+- **Agent Generator** (`pipeline/generator.py`): Main orchestration and generation logic
+- **Progress Manager** (`progress/manager.py`): Tracks progress and enables resumption
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Support
-
-- Documentation: See `CODE_REFERENCE.md`
-- Examples: See `examples/` folder
-- Issues: Check `progress/errors.md` and logs
-- Claude Code CLI: https://code.claude.com
-
-## Acknowledgments
-
-- Powered by Claude Code CLI
-- Built with Anthropic Claude
-- Supports LangChain, LangGraph, CrewAI, and Strands frameworks
-- MCP protocol by Anthropic
-
----
-
-**Built with ❤️ using Claude Code**
