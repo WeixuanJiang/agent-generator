@@ -80,18 +80,28 @@ class ClaudeInterface:
                 cmd_parts.extend(['--max-turns', str(max_turns)])
             if output_format:
                 cmd_parts.extend(['--output-format', output_format])
-            if self.verbose:
-                cmd_parts.append('--verbose')
+            # if self.verbose:
+            #     cmd_parts.append('--verbose')
 
             if is_windows:
-                cmd = " ".join(cmd_parts)
+                # Try to find full path to claude.cmd to avoid shell=True
+                import shutil
+                claude_path = shutil.which("claude.cmd") or "claude.cmd"
+                
+                # Use shell=False if we found the path, otherwise fallback to shell=True
+                use_shell = False if shutil.which("claude.cmd") else True
+                cmd_to_run = [claude_path] + cmd_parts[1:] if not use_shell else " ".join(cmd_parts)
+
+                if self.verbose:
+                    print(f"DEBUG: Running command: {cmd_to_run} (shell={use_shell})")
+
                 result = subprocess.run(
-                    cmd,
+                    cmd_to_run,
                     input=full_prompt,
                     capture_output=True,
                     text=True,
                     timeout=timeout,
-                    shell=True,
+                    shell=use_shell,
                     encoding="utf-8",
                     errors="replace"
                 )
@@ -143,6 +153,11 @@ class ClaudeInterface:
             if self.verbose:
                 print(f"ERROR: {error_msg}\n")
             raise RuntimeError(error_msg)
+
+        except KeyboardInterrupt:
+            if self.verbose:
+                print("DEBUG: Caught KeyboardInterrupt in ClaudeInterface.execute")
+            raise
 
         except FileNotFoundError:
             error_msg = (

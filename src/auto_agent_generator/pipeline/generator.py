@@ -62,6 +62,7 @@ class AgentGenerator:
         self.current_stage: Optional[str] = None
         self.completed_stages: List[str] = []
         self._pipeline_valid: bool = False
+        self.generation_plan: Optional[Dict] = None
 
     def generate(self, resume: bool = False) -> Dict[str, Any]:
         """
@@ -91,6 +92,7 @@ class AgentGenerator:
                     self.current_iteration = checkpoint_data.get("iterations_completed", 0)
                     self.output_dir = checkpoint_data.get("output_dir")
                     self.framework = checkpoint_data.get("framework")
+                    self.generation_plan = checkpoint_data.get("generation_plan")
 
                     if self.verbose:
                         print(f"\n[RESUMING] from stage: {start_stage}")
@@ -140,13 +142,28 @@ class AgentGenerator:
 
             # Phase 3: Generate Initial Code (staged)
             # Define all generation stages in order
-            generation_stages = [
-                ("generation_core_models", "Core Config and Models", ["config/settings.py", "models/ticket.py"]),
-                ("generation_agents", "Agents", ["agents/classifier.py", "agents/researcher.py", "agents/writer.py", "agents/reviewer.py"]),
-                ("generation_supervisor_workflow", "Supervisor and Workflow", ["agents/supervisor.py", "workflows/ticket_workflow.py"]),
-                ("generation_tools_mcps", "Tools and MCP Clients", ["mcps/postgres_client.py", "mcps/vector_db_client.py", "tools/external_apis.py"]),
-                ("generation_tests_docs", "Tests and Docs", ["tests/test_system.py", "requirements.txt", "README.md", ".env.example"])
-            ]
+            
+            # Use dynamic plan if available, otherwise fallback to default
+            if self.generation_plan and "files" in self.generation_plan:
+                files_plan = self.generation_plan["files"]
+                generation_stages = [
+                    ("generation_core_models", "Core Config and Models", files_plan.get("core", [])),
+                    ("generation_agents", "Agents", files_plan.get("agents", [])),
+                    ("generation_supervisor_workflow", "Supervisor and Workflow", files_plan.get("workflows", [])),
+                    ("generation_tools_mcps", "Tools and MCP Clients", files_plan.get("tools", [])),
+                    ("generation_tests_docs", "Tests and Docs", files_plan.get("tests", []))
+                ]
+                # Filter out empty stages
+                generation_stages = [s for s in generation_stages if s[2]]
+            else:
+                # Fallback to hardcoded list if no plan available
+                generation_stages = [
+                    ("generation_core_models", "Core Config and Models", ["config/settings.py", "models/ticket.py"]),
+                    ("generation_agents", "Agents", ["agents/classifier.py", "agents/researcher.py", "agents/writer.py", "agents/reviewer.py"]),
+                    ("generation_supervisor_workflow", "Supervisor and Workflow", ["agents/supervisor.py", "workflows/ticket_workflow.py"]),
+                    ("generation_tools_mcps", "Tools and MCP Clients", ["mcps/postgres_client.py", "mcps/vector_db_client.py", "tools/external_apis.py"]),
+                    ("generation_tests_docs", "Tests and Docs", ["tests/test_system.py", "requirements.txt", "README.md", ".env.example"])
+                ]
 
             # Determine which generation stage to start from
             for i, (stage_name, stage_desc, files) in enumerate(generation_stages):
@@ -214,6 +231,7 @@ class AgentGenerator:
                 "iterations_completed": self.current_iteration,
                 "output_dir": self.output_dir,
                 "framework": self.framework,
+                "generation_plan": self.generation_plan,
                 "last_error": error_msg
             })
             self.progress_manager.save_stage_status(self.current_stage or "unknown", "failed", error_msg)
@@ -236,7 +254,8 @@ class AgentGenerator:
             "completed_stages": self.completed_stages,
             "iterations_completed": self.current_iteration,
             "output_dir": self.output_dir,
-            "framework": self.framework
+            "framework": self.framework,
+            "generation_plan": self.generation_plan
         })
 
     def _complete_stage(self, stage: str, next_stage: str):
@@ -248,7 +267,8 @@ class AgentGenerator:
             "completed_stages": self.completed_stages,
             "iterations_completed": self.current_iteration,
             "output_dir": self.output_dir,
-            "framework": self.framework
+            "framework": self.framework,
+            "generation_plan": self.generation_plan
         })
 
     def _phase_generate_initial_code_stage(self, stage_name: str, target_files: List[str]):
@@ -303,8 +323,31 @@ class AgentGenerator:
         response = self.llm.execute_with_retry(prompt, retries=2, backoff=1.0)
         thinking = self.llm.extract_thinking(response) or response
         self.progress_manager.save_thinking(thinking, "Context Analysis")
-        planning = self._extract_planning_from_response(response)
-        self.progress_manager.save_planning(planning, "Architecture Planning")
+        
+        # Parse the JSON plan
+        try:
+            self.generation_plan = self.llm.extract_json(response)
+            if not self.generation_plan:
+                # Try to find JSON in code blocks if extract_json failed
+                code_blocks = self.llm.extract_code_blocks(response)
+                for block in code_blocks:
+                    if block["language"] == "json":
+                        self.generation_plan = json.loads(block["code"])
+                        break
+            
+            if self.generation_plan:
+                self.progress_manager.save_planning(json.dumps(self.generation_plan, indent=2), "Architecture Planning")
+            else:
+                # Fallback if JSON parsing fails completely
+                planning = self._extract_planning_from_response(response)
+                self.progress_manager.save_planning(planning, "Architecture Planning")
+                if self.verbose:
+                    print("  Warning: Could not parse structured plan, using fallback.")
+        except Exception as e:
+            if self.verbose:
+                print(f"  Warning: Error parsing plan: {e}")
+            planning = self._extract_planning_from_response(response)
+            self.progress_manager.save_planning(planning, "Architecture Planning")
 
         if self.verbose:
             print("  Analysis and planning complete\n")
@@ -329,33 +372,32 @@ TASK:
 4. Plan the data flow between agents
 5. Identify required tools and integrations
 6. Design the testing strategy
+7. List ALL files that need to be generated for this system
 
-Return your analysis and plan in the following format:
+Return your analysis and plan in the following JSON format (no markdown, no explanations):
 
-# ARCHITECTURE PLAN
-
-## Agent Architecture
-- Type: [sequential/hierarchical/collaborative]
-- Number of Agents: [N]
-- Communication Pattern: [description]
-
-## Agent Definitions
-For each agent:
-- Name: [agent name]
-- Role: [role description]
-- Responsibilities: [what it does]
-- Tools/MCPs needed: [list]
-- Inputs: [what it receives]
-- Outputs: [what it produces]
-
-## Data Flow
-[Describe how data flows through the system]
-
-## Testing Strategy
-[Describe how to test the system]
-
-## Implementation Approach
-[Step-by-step implementation plan]
+{{
+    "architecture": {{
+        "type": "sequential|hierarchical|collaborative",
+        "description": "..."
+    }},
+    "agents": [
+        {{
+            "name": "agent_name",
+            "role": "...",
+            "responsibilities": "..."
+        }}
+    ],
+    "files": {{
+        "core": ["config/settings.py", "models/ticket.py"],
+        "agents": ["agents/classifier.py", "agents/researcher.py"],
+        "workflows": ["workflows/ticket_workflow.py"],
+        "tools": ["mcps/postgres_client.py"],
+        "tests": ["tests/test_system.py", "requirements.txt", "README.md"]
+    }},
+    "data_flow": "...",
+    "testing_strategy": "..."
+}}
 """
         return prompt
 
@@ -389,6 +431,32 @@ For each agent:
         # Save planning
         mcp_summary = self.mcp_manager.get_setup_summary()
         self.progress_manager.save_planning(mcp_summary, "MCP Setup")
+        
+        # Inject custom MCP files into generation plan if needed
+        if self.generation_plan and "files" in self.generation_plan:
+            tools_files = self.generation_plan["files"].get("tools", [])
+            
+            # Check for custom MCPs in the plan
+            for mcp in self.mcp_manager.mcp_plan.get("mcps", []):
+                impl_file = mcp.get("implementation_file")
+                if impl_file and impl_file not in tools_files:
+                    if self.verbose:
+                        print(f"  Injecting custom MCP file into generation plan: {impl_file}")
+                    tools_files.append(impl_file)
+            
+            # Update the plan
+            self.generation_plan["files"]["tools"] = tools_files
+            
+            # Update checkpoint with modified plan
+            self.progress_manager.save_checkpoint("pipeline", {
+                "current_stage": self.current_stage,
+                "next_stage": "generation_core_models",
+                "completed_stages": self.completed_stages,
+                "iterations_completed": self.current_iteration,
+                "output_dir": self.output_dir,
+                "framework": self.framework,
+                "generation_plan": self.generation_plan
+            })
 
         if self.verbose:
             print("  MCP setup complete\n")
@@ -430,6 +498,9 @@ For each agent:
         for stage_name, target_files in stages:
             if self.verbose:
                 print(f"  Stage: {stage_name}")
+
+            if self.verbose:
+                print(f"    Generating code... (this may take a minute)")
 
             prompt = self._build_stage_generation_prompt(stage_name, target_files)
             response = self.llm.execute_with_progress_retry(prompt, retries=2, backoff=1.0, max_turns=25)
@@ -580,15 +651,18 @@ CRITICAL OUTPUT RULES:
         llm_config = json.dumps(self.config_parser.create_llm_config(), indent=2)
         files_list = "\n".join([f"- {p}" for p in target_files])
         return (
-            f"Generate code for the stage '{stage_name}' only.\n\n"
+            f"You are now in the IMPLEMENTATION phase. You must generate Python code for the stage '{stage_name}'.\n"
+            f"DO NOT generate a plan. DO NOT generate YAML. DO NOT use placeholders.\n\n"
             f"CONTEXT:\n{context_json}\n\n"
             f"FRAMEWORK: {self.framework}\n"
             f"LLM CONFIGURATION:\n{llm_config}\n\n"
             f"FILES TO GENERATE:\n{files_list}\n\n"
             "CRITICAL OUTPUT RULES:\n"
-            "1. Return ONLY code blocks.\n"
+            "1. Return ONLY valid Python code blocks.\n"
             "2. Each block MUST start with ```python and the first line as '# filename: <path>'.\n"
             "3. Generate ONLY the files listed above for this stage.\n"
+            "4. Ensure the code uses the specified FRAMEWORK ({self.framework}).\n"
+            "5. Do not output any text before or after the code blocks.\n"
         )
 
     def _save_generated_code(self, code_blocks: List[str]):

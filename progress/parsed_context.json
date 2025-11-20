@@ -1,0 +1,177 @@
+{
+  "business_flow": "Customer support ticket automation system that receives tickets from multiple channels (email, chat, web form), automatically classifies them by category (technical, billing, general inquiry) and priority level, searches knowledge base and past tickets for relevant information, generates personalized context-aware responses, reviews responses for quality validation, and either sends responses to resolve tickets or escalates complex issues to human agents.",
+  "inputs": [
+    {
+      "name": "customer_name",
+      "type": "string",
+      "description": "Name of the customer submitting the ticket",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "customer_email",
+      "type": "string",
+      "description": "Email address of the customer",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "ticket_subject",
+      "type": "string",
+      "description": "Subject line of the support ticket",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "ticket_description",
+      "type": "string",
+      "description": "Detailed description of the customer's issue or inquiry",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "timestamp",
+      "type": "datetime",
+      "description": "When the ticket was created",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "channel",
+      "type": "string",
+      "description": "Channel through which ticket was received (email/chat/form)",
+      "required": true,
+      "source": "ticket data"
+    },
+    {
+      "name": "customer_history",
+      "type": "object",
+      "description": "Historical data about customer interactions and preferences",
+      "required": false,
+      "source": "Customer Profile API"
+    },
+    {
+      "name": "knowledge_base_documents",
+      "type": "collection",
+      "description": "Product documentation, FAQs, past resolved tickets, company policies",
+      "required": true,
+      "source": "Vector database (ChromaDB or Pinecone)"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "classified_tickets",
+      "type": "object",
+      "description": "Tickets with assigned category (technical/billing/general) and priority level",
+      "format": "JSON with ticket_id, category, priority, urgency_score"
+    },
+    {
+      "name": "generated_response",
+      "type": "string",
+      "description": "Personalized response draft with greeting, relevant information, step-by-step solutions, documentation links, and professional closing",
+      "format": "Formatted text (200-500 words)"
+    },
+    {
+      "name": "resolution_report",
+      "type": "object",
+      "description": "Summary of resolved tickets with statistics including processing time, success rate, and escalation count",
+      "format": "JSON report with metrics and aggregated statistics"
+    }
+  ],
+  "data_sources": [
+    {
+      "name": "Ticket Database",
+      "type": "database",
+      "connection": "PostgreSQL database with table 'tickets' containing columns: id, customer_email, subject, description, category, status, created_at",
+      "operations": [
+        "read",
+        "write",
+        "update"
+      ]
+    },
+    {
+      "name": "Knowledge Base Vector Store",
+      "type": "database",
+      "connection": "ChromaDB or Pinecone vector database with embeddings for product documentation, FAQs, and historical ticket resolutions",
+      "operations": [
+        "read"
+      ]
+    },
+    {
+      "name": "Customer Profile API",
+      "type": "api",
+      "connection": "REST API providing customer history and preferences",
+      "operations": [
+        "read"
+      ]
+    },
+    {
+      "name": "Product Information API",
+      "type": "api",
+      "connection": "REST API providing real-time product status and updates",
+      "operations": [
+        "read"
+      ]
+    },
+    {
+      "name": "Local Documentation Files",
+      "type": "file",
+      "connection": "File system access for reading PDF and Markdown documentation files",
+      "operations": [
+        "read"
+      ]
+    }
+  ],
+  "knowledge_base": {
+    "required": true,
+    "type": "vector_db",
+    "content_types": [
+      "product_documentation",
+      "faq_articles",
+      "historical_ticket_resolutions",
+      "company_policies",
+      "embeddings"
+    ],
+    "update_frequency": "batch"
+  },
+  "required_mcps": [
+    "postgres",
+    "memory",
+    "brave-search",
+    "filesystem"
+  ],
+  "required_tools": [
+    "ticket_classifier",
+    "priority_scorer",
+    "response_validator"
+  ],
+  "constraints": [
+    "Generate responses within 30 seconds",
+    "Responses must be professional, grammatically correct, and empathetic",
+    "Must provide accurate information from knowledge base",
+    "Do not share customer information across tickets",
+    "Maintain friendly but professional tone",
+    "Responses should be concise (200-500 words typically)",
+    "Successfully process at least 100 tickets per hour",
+    "Response quality score > 4.0/5.0",
+    "90%+ of responses require no human edits",
+    "Average response time < 20 seconds",
+    "Properly escalate complex issues (< 10% false escalations)"
+  ],
+  "preferences": {
+    "coding_style": "Use type hints throughout, write comprehensive docstrings, follow PEP 8 standards, modular design with separate agents for each major function",
+    "error_handling": "Graceful degradation (if knowledge base unavailable, use general responses), log all errors with context, retry failed operations with exponential backoff",
+    "logging_level": "INFO for normal operations, DEBUG for development/troubleshooting, track ticket processing times and success rates"
+  },
+  "agent_architecture": {
+    "suggested_type": "hierarchical",
+    "number_of_agents": 5,
+    "agent_roles": [
+      "supervisor",
+      "classifier",
+      "researcher",
+      "writer",
+      "reviewer"
+    ]
+  }
+}

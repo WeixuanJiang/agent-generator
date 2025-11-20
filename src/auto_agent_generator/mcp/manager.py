@@ -362,28 +362,38 @@ class MCPManager:
         prompt = f"""
 You are designing Model Context Protocol (MCP) servers for an auto agent generator.
 Use the provided project context to propose the minimal set of MCP servers needed.
+
+CONTEXT:
+{context_snippet}
+
+TASK:
+1. Identify data sources and integrations required.
+2. Determine if standard MCPs (like postgres, github, filesystem) can be used.
+3. If custom logic is needed (e.g. specific API wrapper, complex data processing), propose a CUSTOM MCP.
+4. For custom MCPs, specify the implementation file path (e.g. `mcps/my_custom_mcp.py`).
+
 Return ONLY valid JSON matching this schema:
 {{
   "mcps": [
     {{
       "name": "<mcp_name>",
       "purpose": "<what it does>",
+      "type": "standard|custom",
       "command": "<binary or entrypoint>",
       "args": ["<arg1>", "<arg2>"],
       "env": {{"ENV_NAME": "${{ENV_NAME}}"}},
-      "notes": "<optional notes>",
-      "sources": ["<optional data source references>"]
+      "implementation_file": "<path/to/file.py if custom>",
+      "notes": "<optional notes>"
     }}
   ]
 }}
-- Include only MCPs required for the business flow and data sources.
-- If fixed MCP names must be included, ensure they appear: {fixed_label}.
-- Commands and args must be directly runnable (no placeholders beyond env vars in "env").
-- Prefer standard MCP servers when appropriate, but choose based on the context not on a fixed catalog.
-- Do not add extra fields and do not wrap the JSON in code fences.
 
-Context:
-{context_snippet}
+RULES:
+- Include only MCPs required for the business flow.
+- If fixed MCP names must be included, ensure they appear: {fixed_label}.
+- For standard MCPs, use appropriate commands (e.g. `uvx mcp-server-postgres`).
+- For CUSTOM MCPs, the command should be `python` and args should start with the implementation file path.
+- Do not add extra fields and do not wrap the JSON in code fences.
 """
         return prompt
 
